@@ -119,7 +119,7 @@ const (
 	actStack dcstack = 2
 )
 
-func newDocumentConstructor(i io.Reader) *documentConstructor {
+func NewDocumentConstructor(i io.Reader) *documentConstructor {
 	d := new(documentConstructor)
 	d.Document = new(Document)
 	d.Scanner = newCharScanner(i)
