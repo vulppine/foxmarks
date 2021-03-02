@@ -255,7 +255,7 @@ func Open(p string) (*documentConstructor, error) {
 		return nil, err
 	}
 
-	return newDocumentConstructor(f), nil 
+	return NewDocumentConstructor(f), nil
 }
 
 // Construct is the base case of the document builder.
