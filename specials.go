@@ -698,6 +698,7 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 
 	if len(c) > 0 {
 		e, a := NewItem()
+		li = e
 
 		for _, s := range c {
 			e.appendContent(s)
