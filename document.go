@@ -50,9 +50,11 @@ func (s *stack) remove(e *list.Element) {
 }
 
 func (s *stack) debugPrintStack() {
-	log.Println("printing contents of stack")
-	for e := s.head() ; e != nil ; e = e.Next() {
-		log.Println(e.Value)
+	if Debug {
+		log.Println("printing contents of stack")
+		for e := s.head() ; e != nil ; e = e.Next() {
+			log.Println(e.Value)
+		}
 	}
 }
 

@@ -277,14 +277,18 @@ var specialRunes map[rune]actionConstructor = map[rune]actionConstructor{
 		return nil
 	},
 	'!': func(d *documentConstructor) SpecialAction {
-		return func(d *documentConstructor, a *list.Element) {
-			d.HoldAction = true
-			if d.Scanner.Cur == '[' {
-				d.push(d.referenceConstructor(Image))
-			}
+		if d.blockCheck() {
+			return func(d *documentConstructor, a *list.Element) {
+				d.HoldAction = true
+				if d.Scanner.Cur == '[' {
+					d.push(d.referenceConstructor(Image))
+				}
 
-			d.actStack.remove(a)
+				d.actStack.remove(a)
+			}
 		}
+
+		return nil
 	},
 	'[': func(d *documentConstructor) SpecialAction {
 		if d.blockCheck() {
@@ -475,13 +479,16 @@ func strongOrEm(d *documentConstructor, r rune) SpecialAction {
 
 func listOrLine(d *documentConstructor, a *list.Element, t rune, e *BlockObject) SpecialAction {
 	var l int
+	var f int
 
 	if e == nil {
 		e = NewGeneric()
 		e.appendContent(d.Scanner.Cur)
 		l = 1
+		f = 1
 	} else {
 		l = 2
+		f = 2
 	}
 
 	s := 0
@@ -508,9 +515,13 @@ func listOrLine(d *documentConstructor, a *list.Element, t rune, e *BlockObject)
 			debug(l)
 			e.appendContent(d.Scanner.Cur)
 			l++
+			if f < 3 && !b {
+				f++
+			}
+		} else if d.Scanner.Cur == ' ' && !b {
 			b = true
+			s++
 		} else if d.Scanner.Cur != ' ' {
-			b = true
 			if s >= 1 {
 				debug("appending as a new list")
 				l := NewList(0, string(t), Unordered)
@@ -525,19 +536,33 @@ func listOrLine(d *documentConstructor, a *list.Element, t rune, e *BlockObject)
 				if p := d.queueCheck(Paragraph) ; p != nil {
 					debug("appending to paragraph")
 					p.Value.(*BlockObject).Content = p.Value.(*BlockObject).Content + string('\n') + e.Content
-					d.actStack.remove(a)
+					p.Value.(*BlockObject).Initialized = true
 				} else {
 					debug("appending as paragraph")
+					d.Scanner.Pos = l + s - 1
 					e.Type = Paragraph
 					e.Initialized = true
 					d.push(e)
-					d.actStack.remove(a)
 				}
+
+				switch f {
+				case 1:
+					d.push(NewInline(d.Scanner.Pos, EmText))
+				case 2:
+					d.push(NewInline(d.Scanner.Pos - 1, StrongText))
+				case 3:
+					d.push(NewInline(d.Scanner.Pos, StrongText))
+					d.push(NewInline(d.Scanner.Pos - 1, EmText))
+				}
+
+				d.Scanner.Pos++ // why does this need to occur?
+				d.actStack.remove(a)
 			}
-		} else if !b {
+		} else if b {
 			debug(s)
 			e.appendContent(d.Scanner.Cur)
 			s++
+
 		}
 	}
 }
@@ -547,6 +572,8 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 		pre = new(int)
 		*pre = 0
 	}
+
+	d.Scanner.Pos = 0
 
 	var validOp bool
 	var hold bool
@@ -572,8 +599,9 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 	}
 
 	NewItem := func() (*BlockObject, SpecialAction) {
-		e := NewListItem()
 		d.Scanner.Pos = -1
+		e := NewListItem()
+		d.HoldAction = false
 		a := func(d *documentConstructor, a *list.Element) {
 			e.Initialized = true
 			if d.Scanner.Cur == '\n' {
@@ -668,7 +696,9 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 			if string(d.Scanner.Cur) == lattrib.Op {
 				e.appendContent(d.Scanner.Cur)
 				l++
+			} else if d.Scanner.Cur == ' ' && !b {
 				b = true
+				s++
 			} else if d.Scanner.Cur != ' ' {
 				d.HoldAction = false
 				b = true
@@ -677,7 +707,6 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 					e.Content = e.Content[1:] + string(d.Scanner.Cur)
 					d.push(e)
 					d.push(act)
-					d.actStack.remove(_a)
 				} else {
 					debug("creating paragraph, closing list")
 					e.Type = Paragraph
@@ -685,11 +714,12 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 
 					closeList(a)
 					d.actStack.remove(a)
-					d.actStack.remove(_a)
 
 					d.push(e)
 				}
-			} else if !b {
+
+				d.actStack.remove(_a)
+			} else if b {
 				e.appendContent(d.Scanner.Cur)
 				s++
 			}
@@ -701,11 +731,19 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 		li = e
 		act = a
 
-		for _, s := range c {
-			e.appendContent(s)
+		if len(c) == 1 && len(c[0]) == 1 {
+			e.Initialized = true // very specific, but it implies that this is a single character
+			d.Scanner.Pos = d.Scanner.Pos + 1
+		} else {
+			for _, s := range c {
+				e.appendContent(s)
+				d.Scanner.Pos = d.Scanner.Pos + len(s)
+			}
 		}
 
+
 		hold = true
+		d.HoldAction = false
 		d.push(e)
 		d.push(a)
 	}
@@ -748,7 +786,6 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 						d.HoldAction = true
 						if d.Scanner.Cur == ' ' {
 							l := NewList(*pre, c, Unordered)
-							*pre = 0
 
 							debug("creating new list")
 							d.push(d.newListController(&hold, pre, l, ""))
@@ -756,6 +793,7 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 							d.HoldAction = false
 							debug("appending as content to current list item")
 							c = c + string(d.Scanner.Cur)
+							d.Scanner.Pos = d.Scanner.Pos - *pre
 							li.Content = li.Content + c
 							li.Initialized = true
 							d.push(act)
@@ -768,6 +806,7 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 				debug("appending as content to current list item")
 				d.HoldAction = false
 				li.appendContent('\n')
+				d.Scanner.Pos = d.Scanner.Pos - *pre
 				li.Initialized = true
 				d.push(act)
 			}
@@ -803,6 +842,7 @@ func (d *documentConstructor) newListController(phold *bool, pre *int, l *BlockO
 			debug("current prefix spaces: ")
 			debug(*pre)
 		} else if d.Scanner.Cur == '\n' {
+			*pre = 0
 			nl++
 		} else {
 			if phold != nil {

@@ -2,6 +2,7 @@ package foxmarks
 
 import (
 	"sort"
+	"strings"
 )
 
 func isRenderWhitespace(r rune) bool {
@@ -14,17 +15,7 @@ func isRenderWhitespace(r rune) bool {
 
 
 func cleanWhitespace(s string) string {
-	i := 0
-	j := len(s) - 1
-	for isRenderWhitespace(rune(s[i])) {
-		i++
-	}
-
-	for isRenderWhitespace(rune(s[j])) {
-		j--
-	}
-
-	return s[i:j+1]
+	return strings.Trim(s, "\n \t")
 }
 
 type BlockObjectRender struct {
