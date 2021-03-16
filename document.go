@@ -99,9 +99,15 @@ func isWhiteSpace(r rune) bool {
 }
 
 type Document struct {
-	Content []*BlockObject // A document is comprised of only blocks - so, this makes sense for accessing.
+	Content    []*BlockObject // A document is comprised of only blocks - so, this makes sense for accessing.
+	References []*Reference   // A document, however, can also have references.
 }
 
+type Reference struct {
+	Label string
+	Link  string
+	Title string
+}
 
 type documentConstructor struct {
 	Document *Document

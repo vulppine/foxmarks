@@ -238,7 +238,7 @@ var specialRunes map[rune]actionConstructor = map[rune]actionConstructor{
 			return func(d *documentConstructor, a *list.Element) {
 				debug("potential thematic break detected")
 				d.HoldAction = true
-				d.push(listOrLine(d, a, '*', nil))
+				d.push(listOrLine(d, a, '*', nil, 1, 0))
 
 				d.actStack.remove(a)
 			}
@@ -300,45 +300,9 @@ var specialRunes map[rune]actionConstructor = map[rune]actionConstructor{
 
 			debug("creating link")
 			return d.referenceConstructor(Link)
-			/*
-			e := NewLink(d.Scanner.Pos)
-			d.push(e)
-			return func(d *documentConstructor, a *list.Element) {
-				if e.Type == LinkText {
-					if d.Scanner.Cur == ']' {
-						debug("pushing an action to stop link construction")
-						l := d.queueCheck(LinkText)
-						d.push(func(d *documentConstructor) SpecialAction { // FUCKY
-							return func(d *documentConstructor, _a *list.Element) {
-								debug("checking if we're still in link mode...")
-								if d.Scanner.Cur != '(' {
-									debug("we are not, removing link")
-									d.actStack.remove(a)
-									d.inlStack.remove(l)
-								} else {
-									debug("we are, converting to final type")
-									e.Type = Link
-								}
-
-								d.actStack.remove(_a)
-							}
-						}(d))
-					}
-				} else if e.Type == Link {
-					if d.Scanner.Cur == ')' {
-						debug("attempting to close inline link")
-						if l := d.queueCheck(Link); l != nil {
-							debug("closing inline link")
-							d.closeObject(l)
-						}
-					} else {
-						debug("constructing link")
-						e.appendContent(d.Scanner.Cur)
-					}
-				}
-			}
-			*/
-
+		} else {
+			debug("creating reference label")
+			// return d.createRefLabel()
 		}
 
 		return nil
@@ -351,9 +315,60 @@ var specialRunes map[rune]actionConstructor = map[rune]actionConstructor{
 					switch d.Scanner.Cur {
 					case '\n':
 						d.closeObject(e)
-					case '*', '-':
+					case '*':
 						e.Value.(*BlockObject).Initialized = false
-						d.push(listOrLine(d, nil, d.Scanner.Cur, nil))
+						d.push(listOrLine(d, nil, d.Scanner.Cur, nil, 1, 0))
+					case '=':
+						e.Value.(*BlockObject).Initialized = false
+
+						var p string
+						d.push(func () SpecialAction {
+							return func(d *documentConstructor, a *list.Element) {
+								p = p + string(d.Scanner.Cur)
+								d.HoldAction = true
+								if d.Scanner.Cur != '=' {
+									if d.Scanner.Cur == '\n' {
+										e.Value.(*BlockObject).Type = Header1
+										d.closeObject(e)
+										d.actStack.remove(a)
+									} else {
+										e.Value.(*BlockObject).appendContent(p)
+										e.Value.(*BlockObject).Initialized = true
+										d.actStack.remove(a)
+									}
+								}
+							}
+						}())
+					case '-':
+						// The setext header takes precidence,
+						// over the potential thematic break
+						// which takes precidence over
+						// the list.
+						e.Value.(*BlockObject).Initialized = false
+
+						var l int
+						p := NewGeneric()
+
+						d.push(func () SpecialAction {
+							return func(d *documentConstructor, a *list.Element) {
+								p.appendContent(d.Scanner.Cur)
+								d.HoldAction = true
+
+								if d.Scanner.Cur != '-' {
+									if d.Scanner.Cur == '\n' {
+										e.Value.(*BlockObject).Type = Header2
+										d.closeObject(e)
+										d.actStack.remove(a)
+									} else if d.Scanner.Cur == ' ' {
+										debug("checking if this is a list or line")
+										d.push(listOrLine(d, nil, '-', p, l, 1))
+										d.actStack.remove(a)
+									}
+								} else {
+									l++
+								}
+							}
+						}())
 					}
 
 					d.actStack.remove(a)
@@ -371,6 +386,36 @@ var specialRunes map[rune]actionConstructor = map[rune]actionConstructor{
 }
 
 // MORE SPECIAL ACTIONS //
+
+/*
+func (d *documentConstructor) newReferenceLabel() SpecialAction {
+	var c bool
+	var r, l, t string
+
+	o := NewGeneric()
+	d.push(o)
+	return func(d *documentConstructor, a *list.Element) {
+		if !c {
+			if d.Scanner.Cur == ']' {
+				debug("stopping label construction")
+				if len(r) == 0 {
+					debug("0-length label, appending as paragraph")
+					p := NewParagraph()
+					p.appendContent("[]")
+					d.actStack.remove(a)
+				} else {
+					c = true
+					f := NewInline(0, GenericInline)
+					f.appendContent(r)
+					o.appendObject(f)
+				}
+			} else {
+				r = r + string(d.Scanner.Cur)
+			}
+		}
+	}
+}
+*/
 
 func (d *documentConstructor) referenceConstructor(t InlineObjectType) SpecialAction {
 	var e *InlineObject
@@ -477,8 +522,7 @@ func strongOrEm(d *documentConstructor, r rune) SpecialAction {
 	}
 }
 
-func listOrLine(d *documentConstructor, a *list.Element, t rune, e *BlockObject) SpecialAction {
-	var l int
+func listOrLine(d *documentConstructor, a *list.Element, t rune, e *BlockObject, l int, s int) SpecialAction {
 	var f int
 
 	if e == nil {
@@ -487,11 +531,11 @@ func listOrLine(d *documentConstructor, a *list.Element, t rune, e *BlockObject)
 		l = 1
 		f = 1
 	} else {
-		l = 2
-		f = 2
+		if l < 3 {
+			f = l
+		}
 	}
 
-	s := 0
 	b := false
 	return func(d *documentConstructor, a *list.Element) {
 		d.HoldAction = true
