@@ -27,6 +27,7 @@ const (
 	ImageRef
 	Image
 	CodeSpan
+	CodeBlockType
 )
 
 type InlineContent struct {

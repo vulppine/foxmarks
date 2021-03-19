@@ -155,6 +155,22 @@ var specialRunes map[rune]actionConstructor = map[rune]actionConstructor{
 		return nil
 	},
 	'`': func(d *documentConstructor) SpecialAction {
+		/*
+		inlCode := func() SpecialAction {
+			return func(d *documentConstructor, a *list.Element) {
+				d.HoldAction = true
+				if d.Scanner.Cur == '`' {
+					if e := d.queueCheck(CodeSpan) ; e != nil {
+						d.closeObject(e)
+						e.Value.(*InlineObject).EndPos = d.Scanner.Pos
+					}
+				}
+
+				d.actStack.remove(a)
+			}
+		}
+		*/
+
 		if d.blockCheck() && d.objectCur().Initialized == true {
 			d.push(NewInline(d.Scanner.Pos, CodeSpan))
 			return func(d *documentConstructor, a *list.Element) {
@@ -169,59 +185,89 @@ var specialRunes map[rune]actionConstructor = map[rune]actionConstructor{
 				}
 			}
 		} else {
+			var t bool
+			var y string
+			p := NewInline(0, CodeBlockType)
+			p.EndPos = 0
+
 			e := NewGeneric()
 			l := 0
 			c := '`'
 			d.push(e)
 			return func(d *documentConstructor, a *list.Element) {
+				if d.Scanner.Cur != c && l >= 3 && !t {
+					debug("attempting to parse type")
+					t = true
+				}
+
 				if d.Scanner.Cur == c {
+					if t {
+						debug("no longer code block, converting")
+						e.Type = Paragraph
+						e.Initialized = true
+						d.actStack.remove(a)
+
+						e.appendContent(y)
+					}
+
 					l++
 				} else if d.Scanner.Cur == '\n' && l >= 3 {
-					v := 0 
+					v := 0
+					p.appendContent(y)
+					e.appendObject(p)
 					e.Type = CodeBlock
-					e.Initialized = true
 					e.Content = ""
 					d.push(func() SpecialAction {
 						return func(d *documentConstructor, a *list.Element) {
-							d.HoldAction = true
-							if d.Scanner.Cur == '\n' {
-								e.Initialized = false
-								d.push(func() SpecialAction {
-									s := ""
-									return func(d *documentConstructor, _a *list.Element) {
-										d.HoldAction = true
-										s = s + string(d.Scanner.Cur)
-										if d.Scanner.Cur == '`' {
-											v++
-											debug(v)
-										} else if d.Scanner.Cur == '\n' {
-											debug(v)
-											debug(l)
-											if v >= l {
-												debug("closing code fence")
-												if e := d.queueCheck(CodeBlock) ; e != nil {
-													d.closeObject(e)
-												}
+							e.Initialized = true
+							d.push(func () SpecialAction {
+								return func(d *documentConstructor, a *list.Element) {
+									d.HoldAction = true
+									if d.Scanner.Cur == '\n' {
+										e.Initialized = false
+										d.push(func() SpecialAction {
+											s := ""
+											return func(d *documentConstructor, _a *list.Element) {
+												d.HoldAction = true
+												s = s + string(d.Scanner.Cur)
+												if d.Scanner.Cur == '`' {
+													v++
+													debug(v)
+												} else if d.Scanner.Cur == '\n' {
+													debug(v)
+													debug(l)
+													if v >= l {
+														debug("closing code fence")
+														if e := d.queueCheck(CodeBlock) ; e != nil {
+															d.closeObject(e)
+														}
 
-												d.actStack.remove(a)
-												d.actStack.remove(_a)
-											} else {
-												e.Initialized = true
-												e.Content = e.Content + s
-												d.actStack.remove(_a)
+														d.actStack.remove(a)
+														d.actStack.remove(_a)
+													} else {
+														e.Initialized = true
+														e.Content = e.Content + s
+														d.actStack.remove(_a)
+													}
+												} else {
+													e.Initialized = true
+													e.Content = e.Content + s
+													d.actStack.remove(_a)
+												}
 											}
-										} else {
-											e.Initialized = true
-											e.Content = e.Content + s
-											d.actStack.remove(_a)
-										}
+										}())
 									}
-								}())
-							}
+								}
+							}())
+
+							d.actStack.remove(a)
 						}
 					}())
 					d.actStack.remove(a)
+				} else if t {
+					y = y + string(d.Scanner.Cur)
 				} else {
+					debug("no longer code block, converting")
 					e.Type = Paragraph
 					e.Initialized = true
 					d.actStack.remove(a)

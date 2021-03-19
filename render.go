@@ -42,11 +42,18 @@ func (b *BlockObjectRender) renderBlock() string {
 
 	if !set.CleanContent {
 		if len(b.Object.Inlines) == 0 {
-			str = set.Opener + cleanWhitespace(b.Object.Content)
+			if set.CleanWhitespace {
+				b.Object.Content = cleanWhitespace(b.Object.Content)
+			}
+
+			str = set.Opener + b.Object.Content
 		} else {
 			b.renderInlines()
+			if set.CleanWhitespace {
+				b.Render = cleanWhitespace(b.Render)
+			}
 			
-			str = set.Opener + cleanWhitespace(b.Render)
+			str = set.Opener + b.Render
 		}
 	} else {
 		str = set.Opener + ""
@@ -223,59 +230,81 @@ var InlineHTMLTags map[InlineObjectType]InlineHTMLTagset = map[InlineObjectType]
 			return 0
 		},
 	},
+	CodeBlockType: InlineHTMLTagset{
+		Opener: func(i *InlineTag) string {
+			if len(i.Content[0]) == 0 {
+				return ">"
+			}
+
+			return " class=\"language-" + cleanWhitespace(i.Content[0]) + "\">"
+		},
+		Closer: func(i *InlineTag) string { return "" },
+		OpLen: func(i *InlineTag) int { return 0 },
+	},
 }
 
 type BlockHTMLRender struct {
 	Opener string
 	Closer string
 	CleanContent bool
+	CleanWhitespace bool
 }
 
 var BlockHTMLTags map[BlockObjectType]BlockHTMLRender = map[BlockObjectType]BlockHTMLRender{
 	Paragraph: BlockHTMLRender{
 		Opener: "<p>",
 		Closer: "</p>",
+		CleanWhitespace: true,
 	},
 	List: BlockHTMLRender{
 		Opener: "<ul>",
 		Closer: "</ul>",
+		CleanWhitespace: true,
 		CleanContent: true,
 	},
 	ListItem: BlockHTMLRender{
 		Opener: "<li>",
 		Closer: "</li>",
+		CleanWhitespace: true,
 	},
 	ThematicBreak: BlockHTMLRender{
 		Opener: "",
 		Closer: "<hr />",
+		CleanWhitespace: true,
 		CleanContent: true,
 	},
 	Header1: BlockHTMLRender{
 		Opener: "<h1>",
 		Closer: "</h1>",
+		CleanWhitespace: true,
 	},
 	Header2: BlockHTMLRender{
 		Opener: "<h2>",
 		Closer: "</h2>",
+		CleanWhitespace: true,
 	},
 	Header3: BlockHTMLRender{
 		Opener: "<h3>",
 		Closer: "</h3>",
+		CleanWhitespace: true,
 	},
 	Header4: BlockHTMLRender{
 		Opener: "<h4>",
 		Closer: "</h4>",
+		CleanWhitespace: true,
 	},
 	Header5: BlockHTMLRender{
 		Opener: "<h5>",
 		Closer: "</h5>",
+		CleanWhitespace: true,
 	},
 	Header6: BlockHTMLRender{
 		Opener: "<h6>",
 		Closer: "</h6>",
+		CleanWhitespace: true,
 	},
 	CodeBlock: BlockHTMLRender{
-		Opener: "<pre><code>",
+		Opener: "<pre><code",
 		Closer: "</code></pre>",
 	},
 }
